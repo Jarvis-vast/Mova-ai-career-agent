@@ -1,0 +1,6 @@
+{
+  "name": "MOVA - Autonomous AI Career Operations",
+  "description": "Autonomous career operations platform that continuously discovers, evaluates, tailors, verifies, and advances application pipeline nodes with zero routine intervention.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
