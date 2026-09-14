@@ -31,6 +31,8 @@ interface JobsViewProps {
   cycleNumber: number;
   onAddJob?: (job: JobOpportunity) => void;
   onAdvanceJob?: (job: JobOpportunity) => void;
+  systemMode?: 'DEMO' | 'PRODUCTION';
+  onDiscoverJobs?: () => void;
 }
 
 export const JobsView: React.FC<JobsViewProps> = ({
@@ -43,6 +45,8 @@ export const JobsView: React.FC<JobsViewProps> = ({
   cycleNumber,
   onAddJob,
   onAdvanceJob,
+  systemMode = 'DEMO',
+  onDiscoverJobs,
 }) => {
   const [filterType, setFilterType] = useState<'all' | 'scheduled' | 'preparing' | 'blocked'>('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -138,6 +142,17 @@ export const JobsView: React.FC<JobsViewProps> = ({
           </div>
 
           <div className="flex items-center gap-3 flex-wrap">
+            {onDiscoverJobs && (
+              <button
+                id="btn-poll-job-sources"
+                onClick={onDiscoverJobs}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-[#22C55E]/15 hover:bg-[#22C55E]/25 border border-[#22C55E]/30 text-[#22C55E] text-xs font-semibold transition-all shadow-sm"
+                title="Poll live external job feeds (Remote feeds & APIs)"
+              >
+                <RotateCw className="w-3.5 h-3.5" />
+                <span>Poll Live Sources</span>
+              </button>
+            )}
             <button
               onClick={() => setIsAddModalOpen(true)}
               className="flex items-center gap-2 px-4 py-2 rounded-lg bg-[#2a2a2b] hover:bg-[#353436] border border-[#ffd7a9]/30 text-[#ffd7a9] text-xs font-semibold transition-all shadow-sm"
@@ -266,6 +281,15 @@ export const JobsView: React.FC<JobsViewProps> = ({
                       <span className="text-xs px-2.5 py-0.5 rounded-full bg-[#201f20] text-[#ffd7a9] font-mono border border-[#524535]/30">
                         {job.company}
                       </span>
+                      {job.isSimulated || systemMode === 'DEMO' ? (
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#F59E0B]/10 text-[#F59E0B] font-mono border border-[#F59E0B]/30">
+                          DEMO DATA
+                        </span>
+                      ) : (
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#22C55E]/10 text-[#22C55E] font-mono border border-[#22C55E]/30">
+                          LIVE INGESTION
+                        </span>
+                      )}
                     </div>
                     <div className="flex items-center gap-3 text-xs text-[#A1A1AA] flex-wrap">
                       <span>{job.location}</span>

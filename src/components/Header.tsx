@@ -12,6 +12,8 @@ interface HeaderProps {
   candidateProfile?: CandidateProfile;
   logs?: MissionLogItem[];
   onOpenLinkedInAuth?: () => void;
+  systemMode?: 'DEMO' | 'PRODUCTION';
+  onToggleSystemMode?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -24,6 +26,8 @@ export const Header: React.FC<HeaderProps> = ({
   candidateProfile,
   logs = [],
   onOpenLinkedInAuth,
+  systemMode = 'DEMO',
+  onToggleSystemMode,
 }) => {
   const [showNotifications, setShowNotifications] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
@@ -66,6 +70,29 @@ export const Header: React.FC<HeaderProps> = ({
 
       {/* Right Controls */}
       <div className="flex items-center gap-3 relative">
+        {/* Real System Mode Toggle (Demo vs Production) */}
+        <button
+          id="btn-system-mode-toggle"
+          onClick={onToggleSystemMode}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-[11px] font-mono transition-all cursor-pointer ${
+            systemMode === 'PRODUCTION'
+              ? 'bg-[#22C55E]/15 border-[#22C55E]/40 text-[#22C55E] hover:bg-[#22C55E]/25'
+              : 'bg-[#ffd7a9]/15 border-[#ffd7a9]/40 text-[#ffd7a9] hover:bg-[#ffd7a9]/25'
+          }`}
+          title={
+            systemMode === 'PRODUCTION'
+              ? 'PRODUCTION MODE: Live Feeds, Fact Grounding, Staged Applications. Click to switch to Demo.'
+              : 'DEMO MODE: Simulated Runs & Mock Fallbacks. Click to switch to Production.'
+          }
+        >
+          <span
+            className={`w-2 h-2 rounded-full ${
+              systemMode === 'PRODUCTION' ? 'bg-[#22C55E] pulse-dot' : 'bg-[#ffd7a9]'
+            }`}
+          />
+          <span>{systemMode === 'PRODUCTION' ? 'PRODUCTION LIVE' : 'DEMO SANDBOX'}</span>
+        </button>
+
         {/* LinkedIn OAuth Integration Chip */}
         <button
           id="btn-header-linkedin-sync"

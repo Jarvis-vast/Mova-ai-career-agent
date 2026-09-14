@@ -1,6 +1,7 @@
-import React from 'react';
-import { X, CheckCircle, Copy, Shield, FileCode2, Lock } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { X, CheckCircle, Copy, Shield, FileCode2, Lock, History, Clock } from 'lucide-react';
 import { ApplicationRecord } from '../../types';
+import { api } from '../../services/api';
 
 interface EvidencePayloadModalProps {
   application: ApplicationRecord | null;
@@ -13,6 +14,17 @@ export const EvidencePayloadModal: React.FC<EvidencePayloadModalProps> = ({
   mode,
   onClose,
 }) => {
+  const [timelineEvents, setTimelineEvents] = useState<any[]>([]);
+
+  useEffect(() => {
+    if (!application?.id) return;
+    api.getApplicationTimeline(application.id)
+      .then((res) => {
+        if (res.events) setTimelineEvents(res.events);
+      })
+      .catch(() => {});
+  }, [application?.id]);
+
   if (!application) return null;
 
   const handleCopy = (text: string) => {
@@ -105,6 +117,26 @@ export const EvidencePayloadModal: React.FC<EvidencePayloadModalProps> = ({
                   </div>
                 </div>
               </div>
+
+              {/* Real Audit Timeline Events */}
+              {timelineEvents.length > 0 && (
+                <div className="p-4 rounded-xl bg-[#2a2a2b] border border-[#524535]/25 space-y-3">
+                  <div className="flex items-center gap-2 text-[11px] font-semibold text-[#ffd7a9] uppercase tracking-wider">
+                    <History className="w-4 h-4 text-[#ffd7a9]" /> Application Lifecycle Audit Trail
+                  </div>
+                  <div className="space-y-2">
+                    {timelineEvents.map((evt, idx) => (
+                      <div key={idx} className="p-2.5 rounded bg-[#131314] border border-[#524535]/15 space-y-1 text-[11px]">
+                        <div className="flex justify-between items-center text-xs">
+                          <span className="font-mono text-[#F8F9FA] font-bold">{evt.eventType || evt.stage}</span>
+                          <span className="font-mono text-[10px] text-[#A1A1AA]">{evt.timestamp}</span>
+                        </div>
+                        <p className="text-[#A1A1AA]">{evt.details}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           ) : (
             /* Payload View */

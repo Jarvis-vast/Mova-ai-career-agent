@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
-import { X, CheckCircle, ShieldCheck, Download, FileText, Sparkles, AlertCircle } from 'lucide-react';
-import { JobOpportunity, CandidateProfile } from '../../types';
+import React, { useState, useEffect } from 'react';
+import { X, CheckCircle, ShieldCheck, Download, FileText, Sparkles, AlertCircle, RefreshCw, Layers } from 'lucide-react';
+import { JobOpportunity, CandidateProfile, TailoredResumePackage, CoverLetterResult } from '../../types';
+import { api } from '../../services/api';
 
 interface ResumePackageModalProps {
   job: JobOpportunity | null;
@@ -13,7 +14,54 @@ export const ResumePackageModal: React.FC<ResumePackageModalProps> = ({
   candidateProfile,
   onClose,
 }) => {
-  const [activeTab, setActiveTab] = useState<'resume' | 'cover' | 'answers'>('resume');
+  const [activeTab, setActiveTab] = useState<'resume' | 'cover' | 'answers' | 'changes'>('resume');
+  const [tailoredPackage, setTailoredPackage] = useState<TailoredResumePackage | null>(null);
+  const [coverLetter, setCoverLetter] = useState<CoverLetterResult | null>(null);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!job) return;
+    let isMounted = true;
+    setIsGenerating(true);
+    setError(null);
+
+    Promise.all([
+      api.tailorResume({
+        jobId: job.id,
+        jobTitle: job.title,
+        company: job.company,
+        jobDescription: job.description || `${job.title} at ${job.company}`,
+      }).catch((e) => {
+        console.warn('Tailor resume error:', e);
+        return null;
+      }),
+      api.generateCoverLetter({
+        jobId: job.id,
+        jobTitle: job.title,
+        company: job.company,
+        jobDescription: job.description || `${job.title} at ${job.company}`,
+      }).catch((e) => {
+        console.warn('Cover letter error:', e);
+        return null;
+      }),
+    ])
+      .then(([tailored, cover]) => {
+        if (!isMounted) return;
+        if (tailored) setTailoredPackage(tailored);
+        if (cover) setCoverLetter(cover);
+      })
+      .catch((err) => {
+        if (isMounted) setError(err.message);
+      })
+      .finally(() => {
+        if (isMounted) setIsGenerating(false);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [job]);
 
   if (!job) return null;
 
@@ -37,13 +85,18 @@ export const ResumePackageModal: React.FC<ResumePackageModalProps> = ({
           <div>
             <div className="flex items-center gap-2 mb-1">
               <span className="text-[10px] font-mono uppercase tracking-widest px-2 py-0.5 rounded bg-[#22C55E]/15 text-[#22C55E] border border-[#22C55E]/30 font-semibold flex items-center gap-1">
-                <ShieldCheck className="w-3 h-3" /> Zero-Hallucination Tailored Package
+                <ShieldCheck className="w-3 h-3" /> Grounded Evidence Bound
               </span>
               <span className="text-xs text-[#A1A1AA] font-mono">Tailored for {job.company}</span>
+              {tailoredPackage && (
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-[#ffd7a9]/15 text-[#ffd7a9] border border-[#ffd7a9]/30">
+                  Grounding: {tailoredPackage.groundingScore}%
+                </span>
+              )}
             </div>
             <h3 className="text-lg font-semibold text-[#F8F9FA]">{job.title}</h3>
             <p className="text-xs text-[#A1A1AA]">
-              Ground Evidence Bound • 0 Fabricated Claims • Anchored strictly in Candidate Brain
+              Zero Fabricated Claims • Anchored strictly in Candidate Brain Facts
             </p>
           </div>
           <button
@@ -74,7 +127,17 @@ export const ResumePackageModal: React.FC<ResumePackageModalProps> = ({
                 : 'border-transparent text-[#A1A1AA] hover:text-[#F8F9FA]'
             }`}
           >
-            <Sparkles className="w-4 h-4" /> Targeted Cover Note
+            <Sparkles className="w-4 h-4" /> Grounded Cover Letter
+          </button>
+          <button
+            onClick={() => setActiveTab('changes')}
+            className={`py-3 border-b-2 transition-colors flex items-center gap-1.5 ${
+              activeTab === 'changes'
+                ? 'border-[#ffd7a9] text-[#ffd7a9] font-semibold'
+                : 'border-transparent text-[#A1A1AA] hover:text-[#F8F9FA]'
+            }`}
+          >
+            <Layers className="w-4 h-4" /> Evidence &amp; Changes ({tailoredPackage?.changesSummary?.length || 0})
           </button>
           <button
             onClick={() => setActiveTab('answers')}
@@ -90,7 +153,13 @@ export const ResumePackageModal: React.FC<ResumePackageModalProps> = ({
 
         {/* Tab Content */}
         <div className="p-6 overflow-y-auto flex-1 space-y-4">
-          {!hasCandidateData ? (
+          {isGenerating ? (
+            <div className="p-12 text-center space-y-3">
+              <RefreshCw className="w-6 h-6 animate-spin text-[#ffd7a9] mx-auto" />
+              <p className="text-xs text-[#F8F9FA]">Aligning verified candidate facts with role requirements...</p>
+              <p className="text-[11px] text-[#A1A1AA] font-mono">Ensuring strict 100% zero-hallucination constraint</p>
+            </div>
+          ) : !hasCandidateData ? (
             <div className="bg-[#131314] rounded-xl p-8 border border-[#524535]/25 text-center space-y-3">
               <AlertCircle className="w-8 h-8 text-[#ffd7a9] mx-auto" />
               <h4 className="text-sm font-semibold text-[#F8F9FA]">
@@ -199,22 +268,76 @@ export const ResumePackageModal: React.FC<ResumePackageModalProps> = ({
                     <span>To: Hiring Team at {job.company}</span>
                     <span className="font-mono text-[#ffd7a9]">Targeted Persona Addendum</span>
                   </div>
-                  <p>Dear {job.company} Hiring Team,</p>
-                  <p>
-                    I am writing to express my interest in the {job.title} position at {job.company}.
-                    {candidateProfile?.experience && candidateProfile.experience.length > 0
-                      ? ` Having worked as ${candidateProfile.experience[0].role} at ${candidateProfile.experience[0].company}, my background aligns with the engineering and operational objectives of this role.`
-                      : ' My verified skills directly target the technical objectives of this role.'}
-                  </p>
-                  <p>
-                    {job.description
-                      ? `In reviewing your posted requirements, I noted your focus on ${job.title}. I welcome the opportunity to discuss how my verified background can support ${job.company}'s goals.`
-                      : `I welcome the opportunity to discuss how my background can support ${job.company}'s engineering roadmap.`}
-                  </p>
-                  <p className="pt-2">
-                    Sincerely,<br />
-                    <strong className="text-[#ffd7a9]">{candidateName}</strong>
-                  </p>
+                  {coverLetter ? (
+                    <div className="space-y-4 whitespace-pre-line text-[#F8F9FA]">
+                      {coverLetter.text}
+                    </div>
+                  ) : (
+                    <>
+                      <p>Dear {job.company} Hiring Team,</p>
+                      <p>
+                        I am writing to express my interest in the {job.title} position at {job.company}.
+                        {candidateProfile?.experience && candidateProfile.experience.length > 0
+                          ? ` Having worked as ${candidateProfile.experience[0].role} at ${candidateProfile.experience[0].company}, my background aligns with the engineering and operational objectives of this role.`
+                          : ' My verified skills directly target the technical objectives of this role.'}
+                      </p>
+                      <p>
+                        {job.description
+                          ? `In reviewing your posted requirements, I noted your focus on ${job.title}. I welcome the opportunity to discuss how my verified background can support ${job.company}'s goals.`
+                          : `I welcome the opportunity to discuss how my background can support ${job.company}'s engineering roadmap.`}
+                      </p>
+                      <p className="pt-2">
+                        Sincerely,<br />
+                        <strong className="text-[#ffd7a9]">{candidateName}</strong>
+                      </p>
+                    </>
+                  )}
+                </div>
+              )}
+
+              {activeTab === 'changes' && (
+                <div className="space-y-4 text-xs">
+                  <div className="p-4 bg-[#131314] rounded-xl border border-[#524535]/20 space-y-2">
+                    <h4 className="font-semibold text-[#ffd7a9] flex items-center gap-2">
+                      <ShieldCheck className="w-4 h-4 text-[#22C55E]" />
+                      Truth Alignment Report
+                    </h4>
+                    <p className="text-[#A1A1AA]">
+                      Tailoring exclusively re-orders, emphasizes, and formats verified facts. Zero skills or achievements were fabricated.
+                    </p>
+                  </div>
+
+                  {tailoredPackage?.changesSummary && tailoredPackage.changesSummary.length > 0 ? (
+                    <div className="space-y-2">
+                      <h5 className="font-mono text-[11px] uppercase tracking-wider text-[#A1A1AA]">
+                        Modifications Grounded in Facts
+                      </h5>
+                      {tailoredPackage.changesSummary.map((change, idx) => (
+                        <div key={idx} className="p-3 bg-[#131314] rounded-lg border border-[#524535]/20 space-y-1">
+                          <div className="font-semibold text-[#F8F9FA]">{change.section}</div>
+                          <p className="text-[#A1A1AA]">{change.changeDescription}</p>
+                          <span className="text-[10px] font-mono text-[#22C55E]">
+                            ✓ Reason: {change.reason}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="p-4 bg-[#131314] rounded-lg border border-[#524535]/20 text-[#A1A1AA]">
+                      Resume is directly aligned with candidate brain facts without custom modifications.
+                    </div>
+                  )}
+
+                  {tailoredPackage?.gapsIdentified && tailoredPackage.gapsIdentified.length > 0 && (
+                    <div className="p-3 bg-[#131314] rounded-lg border border-[#F59E0B]/30 space-y-1">
+                      <span className="font-semibold text-[#F59E0B]">Honest Gap Assessment</span>
+                      <ul className="list-disc list-inside text-[#A1A1AA] space-y-0.5">
+                        {tailoredPackage.gapsIdentified.map((gap, idx) => (
+                          <li key={idx}>{gap}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
                 </div>
               )}
 

@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   NavPath,
   JobOpportunity,
@@ -14,15 +14,8 @@ import {
   InterviewRecord,
   CompanyRadarItem,
 } from './types';
-import {
-  initialCandidateProfile,
-  initialJobs,
-  initialApplications,
-  initialMissionLogs,
-  initialFollowUp,
-  initialInterviews,
-  initialCompanies,
-} from './data/mockData';
+import { initialCandidateProfile } from './data/mockData';
+import { api } from './services/api';
 import { Sidebar } from './components/Sidebar';
 import { Header } from './components/Header';
 import { OverviewView } from './components/OverviewView';
@@ -53,14 +46,16 @@ export default function App() {
   const [cycleMinutesRemaining, setCycleMinutesRemaining] = useState(30);
   const [cycleNumber, setCycleNumber] = useState(1);
 
-  // Core Data State
+  // Core Data State - Initialized from persistent backend API
   const [candidateProfile, setCandidateProfile] = useState<CandidateProfile>(initialCandidateProfile);
-  const [jobs, setJobs] = useState<JobOpportunity[]>(initialJobs);
-  const [applications, setApplications] = useState<ApplicationRecord[]>(initialApplications);
-  const [logs, setLogs] = useState<MissionLogItem[]>(initialMissionLogs);
-  const [followUp, setFollowUp] = useState<FollowUpItem | null>(initialFollowUp);
-  const [interviews, setInterviews] = useState<InterviewRecord[]>(initialInterviews);
-  const [companies, setCompanies] = useState<CompanyRadarItem[]>(initialCompanies);
+  const [jobs, setJobs] = useState<JobOpportunity[]>([]);
+  const [applications, setApplications] = useState<ApplicationRecord[]>([]);
+  const [logs, setLogs] = useState<MissionLogItem[]>([]);
+  const [followUp, setFollowUp] = useState<FollowUpItem | null>(null);
+  const [interviews, setInterviews] = useState<InterviewRecord[]>([]);
+  const [companies, setCompanies] = useState<CompanyRadarItem[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [systemMode, setSystemMode] = useState<'DEMO' | 'PRODUCTION'>('DEMO');
 
   // Modal States
   const [selectedDecisionJob, setSelectedDecisionJob] = useState<JobOpportunity | null>(null);
@@ -71,6 +66,73 @@ export default function App() {
   const [isRulesModalOpen, setIsRulesModalOpen] = useState(false);
   const [isLinkedInModalOpen, setIsLinkedInModalOpen] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  // Fetch all domain data from persistent backend
+  const refreshAllData = useCallback(async () => {
+    try {
+      const [
+        cand,
+        jobList,
+        appList,
+        intList,
+        compList,
+        agentActivity,
+        agentState,
+      ] = await Promise.all([
+        api.getCandidate().catch(() => initialCandidateProfile),
+        api.getJobs().catch(() => []),
+        api.getApplications().catch(() => []),
+        api.getInterviews().catch(() => []),
+        api.getCompanies().catch(() => []),
+        api.getAgentActivity().catch(() => ({ tasks: [], runs: [], logs: [] })),
+        api.getAgentState().catch(() => ({ status: 'ACTIVE', cadenceMinutes: 30, cycleCount: 1 })),
+      ]);
+
+      setCandidateProfile(cand);
+      setJobs(jobList);
+      setApplications(appList);
+      setInterviews(intList);
+      setCompanies(compList);
+      setLogs(agentActivity.logs || []);
+      setIsAgentActive(agentState.status === 'ACTIVE');
+      setCycleCadenceMinutes(agentState.cadenceMinutes || 30);
+      setCycleNumber(agentState.cycleCount || 1);
+    } catch (err) {
+      console.error('Data hydration error:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    refreshAllData();
+    api.getSystemMode().then((res) => {
+      setSystemMode(res.mode);
+    }).catch(() => {});
+  }, [refreshAllData]);
+
+  const handleToggleSystemMode = async () => {
+    const nextMode = systemMode === 'DEMO' ? 'PRODUCTION' : 'DEMO';
+    try {
+      const res = await api.setSystemMode(nextMode);
+      setSystemMode(res.mode);
+      setToastMessage(`Switched to ${res.label}`);
+      await refreshAllData();
+    } catch (err: any) {
+      setToastMessage(`Failed to switch mode: ${err.message}`);
+    }
+  };
+
+  const handleDiscoverJobs = async () => {
+    try {
+      setToastMessage('Polling real active job sources...');
+      const res = await api.discoverJobs();
+      await refreshAllData();
+      setToastMessage(`Discovery complete: ${res.discoveredCount} jobs found, ${res.qualifiedMatches} qualified.`);
+    } catch (err: any) {
+      setToastMessage(`Job discovery error: ${err.message}`);
+    }
+  };
 
   // Hydrate authentic LinkedIn profile status on startup
   useEffect(() => {
@@ -105,24 +167,21 @@ export default function App() {
     return () => clearInterval(timer);
   }, [isAgentActive, cycleCadenceMinutes]);
 
-  // Action: Trigger immediate cycle
-  const handleTriggerCycle = () => {
-    const newCycleNum = cycleNumber + 1;
-    setCycleNumber(newCycleNum);
-    setCycleMinutesRemaining(cycleCadenceMinutes);
+  // Action: Trigger real 10-step immediate autonomous cycle
+  const handleTriggerCycle = async () => {
+    try {
+      setToastMessage('Running 10-step autonomous career agent cycle...');
+      const res = await api.runAutonomousCycle();
+      const newCycleNum = cycleNumber + 1;
+      setCycleNumber(newCycleNum);
+      setCycleMinutesRemaining(cycleCadenceMinutes);
 
-    const newLog: MissionLogItem = {
-      id: `log-${Date.now()}`,
-      agentName: 'Research Agent',
-      time: 'Just now',
-      headline: `Triggered Autonomous Cycle #${newCycleNum}: Evaluated radar opportunities`,
-      subDetail: 'Evaluated against candidate brain rules · Matching filters active',
-      badgeText: 'CYCLE ACTIVE',
-      badgeType: 'info',
-      icon: 'sparkles',
-    };
-    setLogs((prev) => [newLog, ...prev]);
-    setToastMessage(`Cycle #${newCycleNum} executed`);
+      // Refresh data
+      await refreshAllData();
+      setToastMessage(res.summary || `Cycle #${newCycleNum} executed`);
+    } catch (err: any) {
+      setToastMessage(`Cycle execution failed: ${err.message}`);
+    }
   };
 
   // Action: Toggle agent pause/resume
@@ -147,74 +206,67 @@ export default function App() {
     setLogs((prev) => [logItem, ...prev]);
   };
 
-  // Action: Add a new discovered job
-  const handleAddJob = (job: JobOpportunity) => {
-    setJobs((prev) => [job, ...prev]);
-    const newLog: MissionLogItem = {
-      id: `log-${Date.now()}`,
-      agentName: 'Research Agent',
-      time: 'Just now',
-      headline: `Opportunity Logged: ${job.title} at ${job.company}`,
-      subDetail: `Evaluated fit score: ${job.fitScore}/100 · ${
-        job.hardConstraintsPassed ? 'Hard constraints satisfied' : 'Flagged for candidate policy review'
-      }`,
-      badgeText: 'LOGGED',
-      badgeType: job.hardConstraintsPassed ? 'success' : 'warning',
-      icon: 'sparkles',
-    };
-    setLogs((prev) => [newLog, ...prev]);
-    setToastMessage(`Added ${job.title} to pipeline`);
+  // Action: Add a new discovered job with real backend ingestion & evaluation
+  const handleAddJob = async (job: JobOpportunity) => {
+    try {
+      const created = await api.createJob({
+        title: job.title,
+        company: job.company,
+        location: job.location,
+        workMode: job.workMode,
+        salary: job.salary,
+        description: job.description,
+        requiredSkills: job.requiredSkills,
+      });
+      setJobs((prev) => [created, ...prev]);
+
+      const newLog: MissionLogItem = {
+        id: `log-${Date.now()}`,
+        agentName: 'Research Agent',
+        time: 'Just now',
+        headline: `Opportunity Logged: ${created.title} at ${created.company}`,
+        subDetail: `Evaluated fit score: ${created.fitScore}/100 · ${
+          created.hardConstraintsPassed ? 'Hard constraints satisfied' : 'Flagged for candidate policy review'
+        }`,
+        badgeText: 'LOGGED',
+        badgeType: created.hardConstraintsPassed ? 'success' : 'warning',
+        icon: 'sparkles',
+      };
+      setLogs((prev) => [newLog, ...prev]);
+      setToastMessage(`Ingested ${created.title} into pipeline`);
+    } catch (err: any) {
+      setToastMessage(`Failed to add job: ${err.message}`);
+    }
   };
 
-  // Action: Advance job to submitted application
-  const handleAdvanceJob = (job: JobOpportunity) => {
-    const token = `CONF-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
-    const receiptNum = Math.floor(1000 + Math.random() * 9000);
-    const adapterType = 'Direct Portal';
-    const newApp: ApplicationRecord = {
-      id: `app-${Date.now()}`,
-      company: job.company,
-      jobTitle: job.title,
-      location: job.location,
-      status: 'VERIFIED',
-      confirmationToken: token,
-      receiptId: `#REC-${receiptNum}`,
-      resumeVersion: 'v1.0 (Evidence Anchored)',
-      evidenceCoverage: '100% Grounded',
-      adapter: adapterType,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      signedReceiptHash: `sha256:${Math.random().toString(16).substring(2, 10)}${Math.random().toString(16).substring(2, 10)}`,
-      payloadJson: JSON.stringify(
-        {
-          candidate: candidateProfile.name || 'Candidate',
-          role: job.title,
-          company: job.company,
-          adapter: adapterType,
-          token,
-          submitted_at: new Date().toISOString(),
-        },
-        null,
-        2
-      ),
-    };
+  // Action: Advance job to submitted application (No fake verification)
+  const handleAdvanceJob = async (job: JobOpportunity) => {
+    try {
+      const newApp = await api.createApplication({
+        jobId: job.id,
+        adapter: 'Direct ATS Integration',
+      });
 
-    setApplications((prev) => [newApp, ...prev]);
-    setJobs((prev) =>
-      prev.map((j) => (j.id === job.id ? { ...j, status: 'VERIFIED' } : j))
-    );
+      setApplications((prev) => [newApp, ...prev]);
+      setJobs((prev) =>
+        prev.map((j) => (j.id === job.id ? { ...j, status: 'PREPARING' } : j))
+      );
 
-    const logItem: MissionLogItem = {
-      id: `log-${Date.now()}`,
-      agentName: 'Verification Agent',
-      time: 'Just now',
-      headline: `Application Submitted & Verified: ${job.title} at ${job.company}`,
-      subDetail: `Captured external platform token ${token} via ${adapterType}`,
-      badgeText: 'SUBMITTED',
-      badgeType: 'success',
-      icon: 'shield',
-    };
-    setLogs((prev) => [logItem, ...prev]);
-    setToastMessage(`Application verified for ${job.company}`);
+      const logItem: MissionLogItem = {
+        id: `log-${Date.now()}`,
+        agentName: 'Verification Agent',
+        time: 'Just now',
+        headline: `Application Created in Ready State: ${job.title} at ${job.company}`,
+        subDetail: 'Submission package prepared · Requires execution & verifiable confirmation receipt',
+        badgeText: 'READY',
+        badgeType: 'info',
+        icon: 'shield',
+      };
+      setLogs((prev) => [logItem, ...prev]);
+      setToastMessage(`Application initialized in Ready state for ${job.company}`);
+    } catch (err: any) {
+      setToastMessage(`Cannot advance job: ${err.message}`);
+    }
   };
 
   // Action: Override a blocked job
@@ -246,60 +298,40 @@ export default function App() {
     setToastMessage('Role policy overridden');
   };
 
-  // Action: Update candidate rules
-  const handleUpdateRules = (newRules: CandidateProfile['rules']) => {
-    setCandidateProfile((prev) => ({ ...prev, rules: newRules }));
+  // Action: Update candidate rules and persist to backend
+  const handleUpdateRules = async (newRules: CandidateProfile['rules']) => {
+    try {
+      await api.updateRules(newRules);
+      setCandidateProfile((prev) => ({ ...prev, rules: newRules }));
 
-    const logItem: MissionLogItem = {
-      id: `log-${Date.now()}`,
-      agentName: 'Match Agent',
-      time: 'Just now',
-      headline: 'Candidate Guardrails Updated: Recalibrated policy constraints',
-      subDetail: `Salary floor: ${newRules.salaryFloor || 'None'} · Location constraint: ${newRules.locationConstraint || 'None'}`,
-      badgeText: 'RULES SYNCED',
-      badgeType: 'success',
-      icon: 'rule',
-    };
-    setLogs((prev) => [logItem, ...prev]);
-    setToastMessage('Guardrails saved');
-  };
+      // Refresh jobs as server re-evaluated them against new rules
+      const updatedJobs = await api.getJobs();
+      setJobs(updatedJobs);
 
-  // Inspect log handler
-  const handleInspectLog = (log: MissionLogItem) => {
-    if (log.headline.includes('Application Submitted') || log.headline.includes('Verified')) {
-      setCurrentPath('applications');
-    } else if (log.headline.includes('Opportunity') || log.headline.includes('Cycle')) {
-      setCurrentPath('jobs');
-    } else {
-      setCurrentPath('candidate-brain');
+      const logItem: MissionLogItem = {
+        id: `log-${Date.now()}`,
+        agentName: 'Match Agent',
+        time: 'Just now',
+        headline: 'Candidate Guardrails Updated: Recalibrated policy constraints',
+        subDetail: `Salary floor: ${newRules.salaryFloor || 'None'} · Location constraint: ${newRules.locationConstraint || 'None'}`,
+        badgeText: 'RULES SYNCED',
+        badgeType: 'success',
+        icon: 'sliders',
+      };
+      setLogs((prev) => [logItem, ...prev]);
+      setToastMessage('Guardrails saved & pipeline re-evaluated');
+    } catch (err: any) {
+      setToastMessage(`Failed to save rules: ${err.message}`);
     }
   };
 
-  // Search handler: filter matching jobs/apps
-  const activeJobs = searchQuery
-    ? jobs.filter(
-        (j) =>
-          j.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          j.company.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          j.location.toLowerCase().includes(searchQuery.toLowerCase())
-      )
-    : jobs;
-
-  const activeApps = searchQuery
-    ? applications.filter(
-        (a) =>
-          a.jobTitle.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          a.company.toLowerCase().includes(searchQuery.toLowerCase())
-      )
-    : applications;
-
   return (
-    <div className="min-h-screen bg-[#131314] text-[#e5e2e3] font-sans antialiased flex selection:bg-[#ffd7a9]/30 selection:text-[#ffd7a9]">
-      {/* Left Fixed Navigation Sidebar */}
+    <div className="min-h-screen bg-[#131314] text-[#e5e2e3] flex font-['Inter',sans-serif]">
+      {/* Persistent Left Navigation Sidebar */}
       <Sidebar
         currentPath={currentPath}
-        onNavigate={(p) => {
-          setCurrentPath(p);
+        onNavigate={(path) => {
+          setCurrentPath(path);
           window.scrollTo({ top: 0, behavior: 'smooth' });
         }}
         isAgentActive={isAgentActive}
@@ -307,9 +339,8 @@ export default function App() {
         jobsCount={jobs.length}
       />
 
-      {/* Main Layout Area */}
-      <div className="pl-[240px] flex-1 flex flex-col min-w-0">
-        {/* Top Header */}
+      {/* Main Content Area */}
+      <div className="flex-1 ml-[240px] flex flex-col min-w-0 bg-[#131314]">
         <Header
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
@@ -323,10 +354,11 @@ export default function App() {
           candidateProfile={candidateProfile}
           logs={logs}
           onOpenLinkedInAuth={() => setIsLinkedInModalOpen(true)}
+          systemMode={systemMode}
+          onToggleSystemMode={handleToggleSystemMode}
         />
 
-        {/* Dynamic Route View */}
-        <main className="flex-1 mt-16 overflow-y-auto">
+        <main className="flex-1 overflow-x-hidden">
           {currentPath === 'overview' && (
             <OverviewView
               onNavigate={(p) => {
@@ -338,7 +370,7 @@ export default function App() {
               onToggleAgent={handleToggleAgent}
               logs={logs}
               cycleMinutesRemaining={cycleMinutesRemaining}
-              onInspectLog={handleInspectLog}
+              onInspectLog={(_log) => setSelectedDecisionJob(jobs[0] || null)}
               candidateProfile={candidateProfile}
               jobs={jobs}
               applications={applications}
@@ -349,7 +381,7 @@ export default function App() {
 
           {currentPath === 'jobs' && (
             <JobsView
-              jobs={activeJobs}
+              jobs={jobs}
               candidateProfile={candidateProfile}
               onOpenDecision={(job) => setSelectedDecisionJob(job)}
               onOpenPackage={(job) => setSelectedResumeJob(job)}
@@ -358,12 +390,14 @@ export default function App() {
               cycleNumber={cycleNumber}
               onAddJob={handleAddJob}
               onAdvanceJob={handleAdvanceJob}
+              systemMode={systemMode}
+              onDiscoverJobs={handleDiscoverJobs}
             />
           )}
 
           {currentPath === 'applications' && (
             <ApplicationsView
-              applications={activeApps}
+              applications={applications}
               followUp={followUp}
               onOpenEvidence={(app) => {
                 setSelectedEvidenceApp(app);
@@ -420,9 +454,14 @@ export default function App() {
             <InterviewsView
               interviews={interviews}
               candidateProfile={candidateProfile}
-              onAddInterview={(newInt) => {
-                setInterviews((prev) => [newInt, ...prev]);
-                setToastMessage(`Interview logged for ${newInt.company}`);
+              onAddInterview={async (newInt) => {
+                try {
+                  const created = await api.createInterview(newInt);
+                  setInterviews((prev) => [created, ...prev]);
+                  setToastMessage(`Interview logged for ${created.company}`);
+                } catch (err: any) {
+                  setToastMessage(`Failed to log interview: ${err.message}`);
+                }
               }}
             />
           )}

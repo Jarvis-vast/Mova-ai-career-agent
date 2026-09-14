@@ -9,6 +9,8 @@ export type NavPath =
   | 'analytics'
   | 'settings';
 
+export type SystemMode = 'DEMO' | 'PRODUCTION';
+
 export type JobStatus = 
   | 'SCHEDULED'
   | 'PREPARING'
@@ -30,6 +32,22 @@ export type ApplicationStage =
   | 'Ghosted'
   | 'Unknown'
   | 'Failed';
+
+export type FactVerificationStatus = 'VERIFIED' | 'INFERRED' | 'UNVERIFIED' | 'UNKNOWN';
+
+export interface CandidateFact {
+  id: string;
+  candidateId: string;
+  factType: 'skill' | 'experience' | 'education' | 'project' | 'certification' | 'preference' | 'rule' | 'identity';
+  field: string;
+  claim: string;
+  value: string;
+  source: string;
+  confidence: number;
+  status: FactVerificationStatus;
+  extractedAt: string;
+  notes?: string;
+}
 
 export type EvidenceClassification = 
   | 'VERIFIED'
@@ -166,9 +184,18 @@ export interface CandidateProfile {
   skills: string[];
   skillsTaxonomy: CandidateSkillsTaxonomy;
   evidenceNodes?: CandidateEvidenceNode[];
+  facts?: CandidateFact[];
   preferences: CandidatePreferences;
   rules: CandidateRules;
   linkedInAuth?: LinkedInAuthProfile;
+}
+
+export interface ApplicationTimelineEvent {
+  id: string;
+  stage: 'Job Found' | 'Reviewed' | 'Tailored' | 'Ready' | 'Submitted' | 'Employer Response' | 'Interview' | 'Offer' | 'Rejected';
+  status: 'COMPLETED' | 'IN_PROGRESS' | 'PENDING' | 'FAILED' | 'SKIPPED';
+  timestamp: string;
+  description: string;
 }
 
 export interface JobOpportunity {
@@ -183,40 +210,80 @@ export interface JobOpportunity {
   status: JobStatus;
   fitScore: number;
   hardConstraintsPassed: boolean;
+  source?: string;
+  isDemo?: boolean;
+  sourceVerified?: boolean;
+  url?: string;
+  externalUrl?: string;
+  retrievedAt?: string;
+  employmentType?: string;
+  remote?: boolean;
   hardConstraintDetails?: {
     locationMatch: boolean;
     compensationMatch: boolean;
     relocationMatch: boolean;
     blacklistClear: boolean;
     failureReason?: string;
+    failureReasons?: string[];
   };
   scoreBreakdown: {
     skillsMatch: number;
-    roleSeniority: number;
-    experienceMatch: number;
-    locationRule: string;
+    experienceMatch?: number;
+    locationMatch?: number;
+    salaryMatch?: number | string;
+    roleMatch?: number;
+    constraintsMatch?: number;
+    seniorityMatch?: number;
+    roleSeniority?: number;
+    experienceEvidenceMatch?: number;
+    domainAlignment?: number;
+    locationRule?: string;
     portfolioFit?: number;
     industryFit?: number;
   };
   strengths: string;
   gaps?: string;
+  whyReasons?: string[];
+  gapReasons?: string[];
   riskNote?: string;
   queuePosition?: number;
   cycleNumber?: number;
   tailoringProgress?: number;
   artifactsReady?: string;
   currencyFormat?: string;
+  description?: string;
+  requiredSkills?: string[];
 }
+
+export type ApplicationStatus = 
+  | 'DRAFT'
+  | 'READY'
+  | 'SUBMITTED'
+  | 'FAILED'
+  | 'REQUIRES_ACTION'
+  | 'SIMULATED'
+  | 'VERIFIED'
+  | 'SUBMITTING_VERIFYING'
+  | 'UNKNOWN_AUDIT'
+  | 'RESPONSE'
+  | 'INTERVIEW';
 
 export interface ApplicationRecord {
   id: string;
+  jobId?: string;
   jobTitle: string;
   company: string;
   companyLogo?: string;
   location: string;
-  status: 'VERIFIED' | 'SUBMITTING_VERIFYING' | 'UNKNOWN_AUDIT' | 'RESPONSE' | 'INTERVIEW';
+  status: ApplicationStatus;
   timestamp: string;
   adapter: string;
+  isSimulated?: boolean;
+  submissionMethod?: string;
+  externalApplicationId?: string;
+  responseMetadata?: string;
+  notes?: string;
+  coverLetter?: string;
   confirmationToken?: string;
   receiptId?: string;
   resumeVersion: string;
@@ -230,6 +297,7 @@ export interface ApplicationRecord {
   attemptNumber?: string;
   signedReceiptHash?: string;
   payloadJson?: string;
+  timeline?: ApplicationTimelineEvent[];
 }
 
 export interface MissionLogItem {
@@ -295,4 +363,34 @@ export interface CompanyRadarItem {
   activeOpportunities: number;
   headquarters: string;
   techStack: string[];
+}
+
+export interface TailoredResumePackage {
+  headline?: string;
+  professionalSummary?: string;
+  groundingScore?: number;
+  truthGroundingScore?: number;
+  highlightedSkills?: string[];
+  changesSummary?: Array<{
+    section: string;
+    changeDescription: string;
+    reason: string;
+  }>;
+  gapsIdentified?: string[];
+  tailoredExperiences?: Array<{
+    title: string;
+    company: string;
+    period: string;
+    summary: string;
+    achievements: string[];
+  }>;
+}
+
+export interface CoverLetterResult {
+  text?: string;
+  fullLetterText?: string;
+  recipient?: string;
+  salutation?: string;
+  closing?: string;
+  groundedFactsUsed?: string[];
 }
