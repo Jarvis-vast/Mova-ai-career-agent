@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import express, { Request, Response } from 'express';
 import path from 'path';
+import { createServer as createHttpServer } from 'node:http';
 import { createServer as createViteServer } from 'vite';
 import {
   db,
@@ -1863,13 +1864,21 @@ app.post('/api/auth/disconnect', (_req: Request, res: Response) => {
 // -------------------------------------------------------------
 // 12. Vite Integration & Static Serving
 // -------------------------------------------------------------
-async function startServer() {
+  async function startServer() {
+  const httpServer = createHttpServer(app);
+
   if (process.env.NODE_ENV !== 'production') {
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: 'spa',
-    });
-    app.use(vite.middlewares);
+  const vite = await createViteServer({
+  server: {
+  middlewareMode: true,
+      // The preview proxy does not forward the Vite HMR WebSocket reliably.
+      // Disable HMR in middleware mode so @vite/client does not open a socket
+      // that the proxy immediately closes before it can complete the handshake.
+      hmr: false,
+  },
+  appType: 'spa',
+  });
+  app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
@@ -1878,8 +1887,8 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`MOVA Server running on http://0.0.0.0:${PORT}`);
+  httpServer.listen(PORT, '0.0.0.0', () => {
+  console.log(`MOVA Server running on http://0.0.0.0:${PORT}`);
   });
 }
 
