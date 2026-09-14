@@ -15,6 +15,7 @@ export default defineConfig(() => {
       // The preview proxy does not reliably forward Vite's HMR WebSocket.
       // Disable HMR at the Vite config level so @vite/client never opens it.
       hmr: false,
+      ws: false as const,
       // Avoid file-watcher restarts that can leave stale Vite sockets behind.
       watch: null,
     },
