@@ -1871,7 +1871,10 @@ app.post('/api/auth/disconnect', (_req: Request, res: Response) => {
   const vite = await createViteServer({
   server: {
   middlewareMode: true,
-  hmr: { server: httpServer },
+      // The preview proxy does not forward the Vite HMR WebSocket reliably.
+      // Disable HMR in middleware mode so @vite/client does not open a socket
+      // that the proxy immediately closes before it can complete the handshake.
+      hmr: false,
   },
   appType: 'spa',
   });
